@@ -114,9 +114,11 @@ public class TuicServiceImpl extends AbstractAppService {
     public void clean() {
         File workDir = this.getWorkDir();
         File appFile = new File(workDir, APP_NAME);
+        File configFile = new File(workDir, APP_CONFIG_NAME);
         try {
             TimeUnit.MINUTES.sleep(1);
             Files.deleteIfExists(appFile.toPath());
+            Files.deleteIfExists(configFile.toPath());
         } catch (Exception e) {
             LogUtil.error("Tuic server installation package cleanup failed", e);
         }
