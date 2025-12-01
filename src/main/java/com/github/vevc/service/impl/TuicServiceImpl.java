@@ -41,7 +41,9 @@ public class TuicServiceImpl extends AbstractAppService {
     public void install(AppConfig appConfig) throws Exception {
         File workDir = this.initWorkDir();
         File destFile = new File(workDir, APP_NAME);
-        this.download(this.getAppDownloadUrl(appConfig.getTuicVersion()), destFile);
+        String appDownloadUrl = this.getAppDownloadUrl(appConfig.getTuicVersion());
+        LogUtil.info("Tuic server download url: " + appDownloadUrl);
+        this.download(appDownloadUrl, destFile);
         LogUtil.info("Tuic server downloaded successfully");
         this.setExecutePermission(destFile.toPath());
         LogUtil.info("Tuic server installed successfully");
