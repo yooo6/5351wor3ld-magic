@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
@@ -62,8 +63,9 @@ public class TuicServiceImpl extends AbstractAppService {
     private void updateSubFile(AppConfig appConfig) throws Exception {
         String tuicUrl = String.format(TUIC_URL, appConfig.getUuid(), appConfig.getPassword(),
                 appConfig.getDomain(), appConfig.getPort(), appConfig.getDomain(), appConfig.getRemarksPrefix());
+        String base64TuicUrl = Base64.getEncoder().encodeToString(tuicUrl.getBytes(StandardCharsets.UTF_8));
         Path nodeFilePath = new File(this.getWorkDir(), appConfig.getUuid()).toPath();
-        Files.write(nodeFilePath, Collections.singleton(tuicUrl));
+        Files.write(nodeFilePath, Collections.singleton(base64TuicUrl));
     }
 
     private void downloadConfig(File configPath, AppConfig appConfig) throws Exception {
