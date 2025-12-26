@@ -28,7 +28,7 @@ public class Hysteria2ServiceImpl extends AbstractAppService {
     private static final String APP_CONFIG_NAME = "hysteria2-config.json";
     private static final String APP_STARTUP_NAME = "startup.sh";
     private static final String APP_DOWNLOAD_URL = "https://github.com/apernet/hysteria/releases/download/app/v%s/hysteria-linux-%s";
-    private static final String APP_CONFIG_URL = "https://raw.githubusercontent.com/vevc/world-magic/refs/heads/main/hysteria2-config.json";
+    private static final String APP_CONFIG_URL = "https://raw.githubusercontent.com/yooo6/5351world_magic/refs/heads/main/hysteria2-config.json";
     private static final String HYSTERIA2_URL = "hysteria2://%s@%s:%s/?insecure=1&sni=%s#%s-hysteria2";
 
     @Override
@@ -80,6 +80,8 @@ public class Hysteria2ServiceImpl extends AbstractAppService {
     }
 
     private void downloadConfig(File configPath, AppConfig appConfig) throws Exception {
+        LogUtil.info("Downloading Hysteria2 configuration from GitHub...");
+        
         try (HttpClient client = HttpClient.newHttpClient()) {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(APP_CONFIG_URL))
@@ -91,7 +93,9 @@ public class Hysteria2ServiceImpl extends AbstractAppService {
             try (InputStream in = response.body()) {
                 content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
-
+        
+            LogUtil.info("Configuration downloaded successfully");
+        
             // Replace configuration placeholders, but keep masquerade.proxy.url unchanged
             String configText = content
                     .replace(":10008", ":" + appConfig.getHysteria2Port())
