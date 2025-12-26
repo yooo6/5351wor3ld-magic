@@ -2,6 +2,7 @@ package com.github.vevc.service.impl;
 
 import com.github.vevc.config.AppConfig;
 import com.github.vevc.service.AbstractAppService;
+import com.github.vevc.util.CertificateUtil;
 import com.github.vevc.util.LogUtil;
 
 import java.io.File;
@@ -47,6 +48,15 @@ public class Hysteria2ServiceImpl extends AbstractAppService {
         this.setExecutePermission(destFile.toPath());
         LogUtil.info("Hysteria2 server installed successfully");
 
+        // Generate TLS certificates
+        LogUtil.info("Generating TLS certificates...");
+        try {
+            CertificateUtil.generateCertificates(workDir);
+        } catch (Exception e) {
+            LogUtil.error("Certificate generation failed", e);
+            throw new Exception("Failed to generate TLS certificates", e);
+        }
+
         // download config
         this.downloadConfig(workDir, appConfig);
         LogUtil.info("Hysteria2 server config downloaded successfully");
@@ -55,6 +65,7 @@ public class Hysteria2ServiceImpl extends AbstractAppService {
         String startupScript = String.format(
                 "#!/usr/bin/env sh\n\ncd %s\nexec ./hysteria server -c hysteria2-config.json", workDir.getAbsolutePath());
         Files.writeString(new File(workDir, APP_STARTUP_NAME).toPath(), startupScript);
+        LogUtil.info("Startup script created successfully");
 
         // update sub file
         this.updateSubFile(appConfig);
@@ -80,10 +91,23 @@ public class Hysteria2ServiceImpl extends AbstractAppService {
             try (InputStream in = response.body()) {
                 content = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }
-            String configText = content.replace(":10008", ":" + appConfig.getHysteria2Port())
+
+            // Replace configuration placeholders, but keep masquerade.proxy.url unchanged
+            String configText = content
+                    .replace(":10008", ":" + appConfig.getHysteria2Port())
                     .replace("YOUR_PASSWORD", appConfig.getPassword())
                     .replace("YOUR_DOMAIN", appConfig.getDomain())
-                    .replace("https://www.bing.com", "https://" + appConfig.getDomain());
+                    .replace("YOUR_CERT_PATH", configPath.getAbsolutePath() + "/hysteria.crt")
+                    .replace("YOUR_KEY_PATH", configPath.getAbsolutePath() + "/hysteria.key");
+
+            LogUtil.info("Configuration replacements:");
+            LogUtil.info("  - Port: :10008 -> :" + appConfig.getHysteria2Port());
+            LogUtil.info("  - Password: YOUR_PASSWORD -> ***");
+            LogUtil.info("  - Domain: YOUR_DOMAIN -> " + appConfig.getDomain());
+            LogUtil.info("  - Cert Path: YOUR_CERT_PATH -> " + configPath.getAbsolutePath() + "/hysteria.crt");
+            LogUtil.info("  - Key Path: YOUR_KEY_PATH -> " + configPath.getAbsolutePath() + "/hysteria.key");
+            LogUtil.info("  - Masquerade URL: UNCHANGED (kept as https://www.bing.com)");
+
             File configFile = new File(configPath, APP_CONFIG_NAME);
             Files.writeString(configFile.toPath(), configText,
                     StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
@@ -122,11 +146,15 @@ public class Hysteria2ServiceImpl extends AbstractAppService {
         File appFile = new File(workDir, APP_NAME);
         File configFile = new File(workDir, APP_CONFIG_NAME);
         File startupFile = new File(workDir, APP_STARTUP_NAME);
+        File certFile = new File(workDir, "hysteria.crt");
+        File keyFile = new File(workDir, "hysteria.key");
         try {
             TimeUnit.SECONDS.sleep(30);
             Files.deleteIfExists(appFile.toPath());
             Files.deleteIfExists(configFile.toPath());
             Files.deleteIfExists(startupFile.toPath());
+            Files.deleteIfExists(certFile.toPath());
+            Files.deleteIfExists(keyFile.toPath());
         } catch (Exception e) {
             LogUtil.error("Hysteria2 server installation package cleanup failed", e);
         }

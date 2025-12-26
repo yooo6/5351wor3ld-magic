@@ -1,8 +1,8 @@
 {
   "listen": ":10008",
   "tls": {
-    "cert": "",
-    "key": "",
+    "cert": "YOUR_CERT_PATH",
+    "key": "YOUR_KEY_PATH",
     "sni": "YOUR_DOMAIN"
   },
   "auth": {
