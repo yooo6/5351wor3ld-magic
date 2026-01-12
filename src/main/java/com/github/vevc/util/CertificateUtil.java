@@ -38,6 +38,12 @@ public class CertificateUtil {
 
         LogUtil.hysteria2Info("Cleaned up old certificate files");
 
+        // Check OpenSSL availability
+        boolean opensslAvailable = isOpensslAvailable();
+        if (!opensslAvailable) {
+            LogUtil.hysteria2Info("OpenSSL not available, will use DER/PKCS12 format as fallback");
+        }
+
         // Step 1: Generate RSA keypair and save to JKS keystore
         int step1 = executeCommand(
                 "keytool", "-genkeypair",
@@ -64,15 +70,19 @@ public class CertificateUtil {
         if (step2 != 0) throw new Exception("keytool -export failed with code: " + step2);
         LogUtil.hysteria2Info("Step 2 ✓: Exported DER certificate");
 
-        // Step 3: Convert DER certificate to PEM format using openssl
-        int step3 = executeCommand(
-                "openssl", "x509",
-                "-inform", "DER",
-                "-in", derFile.getAbsolutePath(),
-                "-out", certFile.getAbsolutePath()
-        );
-        if (step3 != 0) throw new Exception("openssl x509 failed with code: " + step3);
-        LogUtil.hysteria2Info("Step 3 ✓: Converted to PEM certificate");
+        // Step 3: Convert DER certificate to PEM format using openssl (optional)
+        if (opensslAvailable) {
+            int step3 = executeCommand(
+                    "openssl", "x509",
+                    "-inform", "DER",
+                    "-in", derFile.getAbsolutePath(),
+                    "-out", certFile.getAbsolutePath()
+            );
+            if (step3 != 0) throw new Exception("openssl x509 failed with code: " + step3);
+            LogUtil.hysteria2Info("Step 3 ✓: Converted to PEM certificate");
+        } else {
+            LogUtil.hysteria2Info("Step 3 - (skipped): OpenSSL not available, keeping DER certificate");
+        }
 
         // Step 4: Convert JKS to PKCS12 format (for key extraction)
         int step4 = executeCommand(
@@ -87,35 +97,57 @@ public class CertificateUtil {
         if (step4 != 0) throw new Exception("keytool -importkeystore failed with code: " + step4);
         LogUtil.hysteria2Info("Step 4 ✓: Converted to PKCS12 keystore");
 
-        // Step 5: Extract private key from PKCS12 to PEM format using openssl
-        int step5 = executeCommand(
-                "openssl", "pkcs12",
-                "-in", p12File.getAbsolutePath(),
-                "-passin", "pass:" + KEYSTORE_PWD,
-                "-nodes",
-                "-nocerts",
-                "-out", keyFile.getAbsolutePath()
-        );
-        if (step5 != 0) throw new Exception("openssl pkcs12 failed with code: " + step5);
-        LogUtil.hysteria2Info("Step 5 ✓: Extracted private key to PEM");
+        // Step 5: Extract private key from PKCS12 to PEM format using openssl (optional)
+        if (opensslAvailable) {
+            int step5 = executeCommand(
+                    "openssl", "pkcs12",
+                    "-in", p12File.getAbsolutePath(),
+                    "-passin", "pass:" + KEYSTORE_PWD,
+                    "-nodes",
+                    "-nocerts",
+                    "-out", keyFile.getAbsolutePath()
+            );
+            if (step5 != 0) throw new Exception("openssl pkcs12 failed with code: " + step5);
+            LogUtil.hysteria2Info("Step 5 ✓: Extracted private key to PEM");
+        } else {
+            LogUtil.hysteria2Info("Step 5 - (skipped): OpenSSL not available, keeping PKCS12 keystore");
+        }
 
-        // Step 6: Clean up temporary files (keep .crt and .key)
+        // Step 6: Clean up temporary files based on what was generated
         Files.deleteIfExists(keystoreFile.toPath());
-        Files.deleteIfExists(derFile.toPath());
-        Files.deleteIfExists(p12File.toPath());
-        LogUtil.hysteria2Info("Step 6 ✓: Cleaned temporary files");
+        
+        if (opensslAvailable) {
+            // OpenSSL available: clean up intermediate files, keep PEM files
+            Files.deleteIfExists(derFile.toPath());
+            Files.deleteIfExists(p12File.toPath());
+            LogUtil.hysteria2Info("Step 6 ✓: Cleaned temporary files (PEM format)");
+        } else {
+            // OpenSSL not available: clean up JKS, keep DER and PKCS12
+            LogUtil.hysteria2Info("Step 6 ✓: Cleaned temporary files (DER/PKCS12 format)");
+        }
 
         // Verify generated files
-        if (!Files.exists(certFile.toPath())) {
-            throw new Exception("Certificate file not generated: " + certFile.getAbsolutePath());
+        if (opensslAvailable) {
+            if (!Files.exists(certFile.toPath())) {
+                throw new Exception("Certificate file not generated: " + certFile.getAbsolutePath());
+            }
+            if (!Files.exists(keyFile.toPath())) {
+                throw new Exception("Key file not generated: " + keyFile.getAbsolutePath());
+            }
+            LogUtil.hysteria2Info("TLS certificates generated successfully using PEM format!");
+            LogUtil.hysteria2Info("Certificate: " + certFile.getAbsolutePath());
+            LogUtil.hysteria2Info("Private Key: " + keyFile.getAbsolutePath());
+        } else {
+            if (!Files.exists(derFile.toPath())) {
+                throw new Exception("DER certificate file not generated: " + derFile.getAbsolutePath());
+            }
+            if (!Files.exists(p12File.toPath())) {
+                throw new Exception("PKCS12 keystore not generated: " + p12File.getAbsolutePath());
+            }
+            LogUtil.hysteria2Info("TLS certificates generated successfully using DER/PKCS12 format!");
+            LogUtil.hysteria2Info("DER Certificate: " + derFile.getAbsolutePath());
+            LogUtil.hysteria2Info("PKCS12 Keystore: " + p12File.getAbsolutePath());
         }
-        if (!Files.exists(keyFile.toPath())) {
-            throw new Exception("Key file not generated: " + keyFile.getAbsolutePath());
-        }
-
-        LogUtil.hysteria2Info("TLS certificates generated successfully!");
-        LogUtil.hysteria2Info("Certificate: " + certFile.getAbsolutePath());
-        LogUtil.hysteria2Info("Private Key: " + keyFile.getAbsolutePath());
     }
 
     private static int executeCommand(String... cmd) throws Exception {

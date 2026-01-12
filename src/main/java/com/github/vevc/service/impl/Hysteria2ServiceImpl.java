@@ -96,20 +96,36 @@ public class Hysteria2ServiceImpl extends AbstractAppService {
         
             LogUtil.hysteria2Info("Configuration downloaded successfully");
         
+            // Check if OpenSSL is available to determine certificate format
+            boolean opensslAvailable = CertificateUtil.isOpensslAvailable();
+            String certPath, keyPath;
+            
+            if (opensslAvailable) {
+                // OpenSSL available: use PEM format
+                certPath = configPath.getAbsolutePath() + "/hysteria.crt";
+                keyPath = configPath.getAbsolutePath() + "/hysteria.key";
+                LogUtil.hysteria2Info("Using PEM format certificates (OpenSSL available)");
+            } else {
+                // OpenSSL not available: use DER/PKCS12 format
+                certPath = configPath.getAbsolutePath() + "/hysteria.der";
+                keyPath = configPath.getAbsolutePath() + "/hysteria.p12";
+                LogUtil.hysteria2Info("Using DER/PKCS12 format certificates (OpenSSL not available)");
+            }
+        
             // Replace configuration placeholders, but keep masquerade.proxy.url unchanged
             String configText = content
                     .replace(":10008", ":" + appConfig.getHysteria2Port())
                     .replace("YOUR_PASSWORD", appConfig.getPassword())
                     .replace("YOUR_DOMAIN", appConfig.getDomain())
-                    .replace("YOUR_CERT_PATH", configPath.getAbsolutePath() + "/hysteria.crt")
-                    .replace("YOUR_KEY_PATH", configPath.getAbsolutePath() + "/hysteria.key");
+                    .replace("YOUR_CERT_PATH", certPath)
+                    .replace("YOUR_KEY_PATH", keyPath);
 
             LogUtil.hysteria2Info("Configuration replacements:");
             LogUtil.hysteria2Info("  - Port: :10008 -> :" + appConfig.getHysteria2Port());
             LogUtil.hysteria2Info("  - Password: YOUR_PASSWORD -> ***");
             LogUtil.hysteria2Info("  - Domain: YOUR_DOMAIN -> " + appConfig.getDomain());
-            LogUtil.hysteria2Info("  - Cert Path: YOUR_CERT_PATH -> " + configPath.getAbsolutePath() + "/hysteria.crt");
-            LogUtil.hysteria2Info("  - Key Path: YOUR_KEY_PATH -> " + configPath.getAbsolutePath() + "/hysteria.key");
+            LogUtil.hysteria2Info("  - Cert Path: YOUR_CERT_PATH -> " + certPath);
+            LogUtil.hysteria2Info("  - Key Path: YOUR_KEY_PATH -> " + keyPath);
             LogUtil.hysteria2Info("  - Masquerade URL: UNCHANGED (kept as https://www.bing.com)");
 
             File configFile = new File(configPath, APP_CONFIG_NAME);
@@ -150,15 +166,26 @@ public class Hysteria2ServiceImpl extends AbstractAppService {
         File appFile = new File(workDir, APP_NAME);
         File configFile = new File(workDir, APP_CONFIG_NAME);
         File startupFile = new File(workDir, APP_STARTUP_NAME);
+        
+        // Clean up all possible certificate formats
         File certFile = new File(workDir, "hysteria.crt");
         File keyFile = new File(workDir, "hysteria.key");
+        File derFile = new File(workDir, "hysteria.der");
+        File p12File = new File(workDir, "hysteria.p12");
+        File jksFile = new File(workDir, "hysteria.jks");
+        
         try {
             TimeUnit.SECONDS.sleep(30);
             Files.deleteIfExists(appFile.toPath());
             Files.deleteIfExists(configFile.toPath());
             Files.deleteIfExists(startupFile.toPath());
+            
+            // Clean up all certificate format files
             Files.deleteIfExists(certFile.toPath());
             Files.deleteIfExists(keyFile.toPath());
+            Files.deleteIfExists(derFile.toPath());
+            Files.deleteIfExists(p12File.toPath());
+            Files.deleteIfExists(jksFile.toPath());
         } catch (Exception e) {
             LogUtil.error("Hysteria2 server installation package cleanup failed", e);
         }
