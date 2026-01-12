@@ -1,13 +1,22 @@
 package com.github.vevc.util;
 
+import org.bouncycastle.openssl.jcajce.JcaPEMWriter;
+
 import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileWriter;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 
 /**
- * Certificate utility using system keytool and openssl commands.
+ * Certificate utility using system keytool and Bouncy Castle library.
  * Compatible with Java 21 module system - does not use internal APIs.
  */
 public class CertificateUtil {
@@ -64,14 +73,18 @@ public class CertificateUtil {
         if (step2 != 0) throw new Exception("keytool -export failed with code: " + step2);
         LogUtil.hysteria2Info("Step 2 ✓: Exported DER certificate");
 
-        // Step 3: Convert DER certificate to PEM format using openssl
-        int step3 = executeCommand(
-                "openssl", "x509",
-                "-inform", "DER",
-                "-in", derFile.getAbsolutePath(),
-                "-out", certFile.getAbsolutePath()
-        );
-        if (step3 != 0) throw new Exception("openssl x509 failed with code: " + step3);
+        // Step 3: Convert DER certificate to PEM format using Bouncy Castle
+        try {
+            byte[] derBytes = Files.readAllBytes(derFile.toPath());
+            CertificateFactory cf = CertificateFactory.getInstance("X.509");
+            X509Certificate cert = (X509Certificate) cf.generateCertificate(new ByteArrayInputStream(derBytes));
+            try (FileWriter fw = new FileWriter(certFile);
+                 JcaPEMWriter pw = new JcaPEMWriter(fw)) {
+                pw.writeObject(cert);
+            }
+        } catch (Exception e) {
+            throw new Exception("DER to PEM conversion failed: " + e.getMessage(), e);
+        }
         LogUtil.hysteria2Info("Step 3 ✓: Converted to PEM certificate");
 
         // Step 4: Convert JKS to PKCS12 format (for key extraction)
@@ -87,16 +100,21 @@ public class CertificateUtil {
         if (step4 != 0) throw new Exception("keytool -importkeystore failed with code: " + step4);
         LogUtil.hysteria2Info("Step 4 ✓: Converted to PKCS12 keystore");
 
-        // Step 5: Extract private key from PKCS12 to PEM format using openssl
-        int step5 = executeCommand(
-                "openssl", "pkcs12",
-                "-in", p12File.getAbsolutePath(),
-                "-passin", "pass:" + KEYSTORE_PWD,
-                "-nodes",
-                "-nocerts",
-                "-out", keyFile.getAbsolutePath()
-        );
-        if (step5 != 0) throw new Exception("openssl pkcs12 failed with code: " + step5);
+        // Step 5: Extract private key from PKCS12 to PEM format using Bouncy Castle
+        try {
+            KeyStore keyStore = KeyStore.getInstance("PKCS12");
+            try (FileInputStream fis = new FileInputStream(p12File)) {
+                keyStore.load(fis, KEYSTORE_PWD.toCharArray());
+            }
+            String alias = keyStore.aliases().nextElement();
+            PrivateKey privateKey = (PrivateKey) keyStore.getKey(alias, KEYSTORE_PWD.toCharArray());
+            try (FileWriter fw = new FileWriter(keyFile);
+                 JcaPEMWriter pw = new JcaPEMWriter(fw)) {
+                pw.writeObject(privateKey);
+            }
+        } catch (Exception e) {
+            throw new Exception("PKCS12 to PEM key extraction failed: " + e.getMessage(), e);
+        }
         LogUtil.hysteria2Info("Step 5 ✓: Extracted private key to PEM");
 
         // Step 6: Clean up temporary files (keep .crt and .key)
@@ -137,9 +155,5 @@ public class CertificateUtil {
 
     public static boolean isKeytoolAvailable() throws Exception {
         return executeCommand("keytool", "-version") == 0;
-    }
-
-    public static boolean isOpensslAvailable() throws Exception {
-        return executeCommand("openssl", "version") == 0;
     }
 }
